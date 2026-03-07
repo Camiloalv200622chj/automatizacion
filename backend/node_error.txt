@@ -1,0 +1,5 @@
+page.goto: net::ERR_INTERNET_DISCONNECTED at https://servicio.nuevosoi.com.co/soi/certificadoAportesCotizante.do
+Call log:
+[2m  - navigating to "https://servicio.nuevosoi.com.co/soi/certificadoAportesCotizante.do", waiting until "load"[22m
+
+    at runTest (C:\Users\juanc\OneDrive\Desktop\automatizacion\backend\test-soi.js:12:20)
