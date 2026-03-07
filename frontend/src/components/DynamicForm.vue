@@ -23,9 +23,7 @@ const entityFields: Record<string, any[]> = {
   miplanilla: [
     { name: 'tipoDocumento', label: 'Tipo de Documento', type: 'select', options: ['CC', 'NIT', 'CE'] },
     { name: 'numeroDocumento', label: 'Número de Documento', type: 'text' },
-    { name: 'numeroPlanilla', label: 'Número de Planilla', type: 'text' },
-    { name: 'fechaPago', label: 'Fecha de Pago', type: 'date' },
-    { name: 'valorPagado', label: 'Valor Total Pagado', type: 'number' }
+    { name: 'periodo', label: 'Periodo (Mes y Año)', type: 'month' }
   ],
   enlace: [
     { name: 'tipoDocumento', label: 'Tipo de Documento', type: 'select', options: ['CC', 'CE', 'TI'] },
@@ -40,7 +38,12 @@ const entityFields: Record<string, any[]> = {
   ]
 };
 
-const currentFields = computed(() => entityFields[props.entity] || []);
+const currentFields = computed(() => {
+  const baseFields = [
+    { name: 'nombreCompleto', label: 'Nombre Completo del Contratista', type: 'text', placeholder: 'Ej: Juan Pérez' }
+  ];
+  return [...baseFields, ...(entityFields[props.entity] || [])];
+});
 
 const submitForm = async () => {
     loading.value = true;

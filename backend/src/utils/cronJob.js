@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { runAutomation } from '../controllers/automationController.js';
+import { executeFullAutomation } from '../services/automationService.js';
 import logger from './logger.js';
 
 /**
@@ -17,10 +17,7 @@ export const setupCronJobs = () => {
         if (tomorrow.getMonth() !== today.getMonth()) {
             logger.info('📅 Es el último día del mes. Iniciando automatización programada...');
             try {
-                // We simulate a req/res object for the controller if needed, 
-                // or refactor the controller to separate logic. 
-                // For now, let's just log and prepare for the call.
-                await runAutomation({}, { json: (data) => logger.info(`Resumen Cron: ${JSON.stringify(data)}`) }, (err) => logger.error(`Error en Cron: ${err.message}`));
+                await executeFullAutomation();
             } catch (error) {
                 logger.error(`Error ejecutando la tarea programada: ${error.message}`);
             }

@@ -1,54 +1,12 @@
+import { executeFullAutomation, executeEntityAutomation } from '../services/automationService.js';
 import Contratista from '../models/Contratista.js';
-import { downloadCertificate } from '../utils/scrapingService.js';
-import { processDownloadedFile } from '../utils/fileService.js';
-import googleDriveService from '../utils/googleDriveService.js';
+import Record from '../models/Record.js';
 import logger from '../utils/logger.js';
-import fs from 'fs';
 
 export const runAutomation = async (req, res, next) => {
     try {
-        const contratistas = await Contratista.find({ isActive: true });
-
-        if (contratistas.length === 0) {
-            return res.json({ message: 'No hay contratistas activos para procesar.' });
-        }
-
-        const results = [];
-
-        for (const contratista of contratistas) {
-            try {
-                logger.info(`Procesando contratista: ${contratista.nombreCompleto}`);
-
-                // 1. Scraping
-                const zipPath = await downloadCertificate(contratista);
-
-                // 2. Procesamiento local
-                const pdfPath = await processDownloadedFile(zipPath, contratista);
-
-                // 3. Subida a Google Drive
-                const folderId = await googleDriveService.getOrCreateYearMonthFolder();
-                if (folderId) {
-                    const fileName = pdfPath.split('\\').pop() || pdfPath.split('/').pop();
-                    await googleDriveService.uploadFile(pdfPath, fileName, folderId);
-                    logger.info(`Certificado de ${contratista.nombreCompleto} subido a Drive.`);
-                }
-
-                results.push({ documento: contratista.documento, status: 'success' });
-
-                // Clean up local files after processing and upload
-                fs.unlinkSync(zipPath);
-                fs.unlinkSync(pdfPath);
-
-            } catch (err) {
-                logger.error(`Fallo en automatización para ${contratista.nombreCompleto} (documento: ${contratista.documento}): ${err.message}`);
-                results.push({ documento: contratista.documento, status: 'failed', error: err.message });
-            }
-        }
-
-        res.json({
-            message: 'Proceso de automatización finalizado',
-            summary: results
-        });
+        const result = await executeFullAutomation();
+        res.json(result);
     } catch (error) {
         next(error);
     }
@@ -61,26 +19,42 @@ export const runAutomation = async (req, res, next) => {
 export const runEntityAutomation = async (req, res, next) => {
     try {
         const { entity, data } = req.body;
-        logger.info(`Solicitud recibida para entidad: ${entity}`);
-        logger.debug(`Datos recibidos: ${JSON.stringify(data)}`);
 
-        // 1. Scraping
-        const resultPath = await downloadCertificate(null, { entity, data });
-
-        // 2. Subida a Drive si se generó archivo
-        if (resultPath && fs.existsSync(resultPath)) {
-            const folderId = await googleDriveService.getOrCreateYearMonthFolder();
-            if (folderId) {
-                const fileName = resultPath.split('\\').pop() || resultPath.split('/').pop();
-                await googleDriveService.uploadFile(resultPath, fileName, folderId);
-                fs.unlinkSync(resultPath);
-            }
+        if (!data.nombreCompleto) {
+            return res.status(400).json({ message: 'El nombre del contratista es obligatorio' });
         }
 
+        const result = await executeEntityAutomation(entity, data);
+        res.json(result);
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * @desc    Obtener estado de cumplimiento mensual
+ * @route   GET /api/automation/status
+ */
+export const getAutomationStatus = async (req, res, next) => {
+    try {
+        const period = req.query.period || new Date().toISOString().substring(0, 7);
+
+        const contratistas = await Contratista.find({ isActive: true });
+        const records = await Record.find({ periodo: period });
+
+        const statusReport = contratistas.map(c => {
+            const hasRecord = records.some(r => r.documento === c.numeroDocumento);
+            return {
+                nombre: c.nombreCompleto,
+                documento: c.numeroDocumento,
+                completado: hasRecord,
+                fecha: hasRecord ? records.find(r => r.documento === c.numeroDocumento).fechaProcesamiento : null
+            };
+        });
+
         res.json({
-            message: `Automatización para ${entity} completada con éxito.`,
-            status: 'success',
-            receivedData: data
+            periodo: period,
+            report: statusReport
         });
     } catch (error) {
         next(error);
