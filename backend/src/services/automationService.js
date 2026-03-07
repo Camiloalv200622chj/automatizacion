@@ -89,9 +89,11 @@ export const executeEntityAutomation = async (entity, data) => {
         }
     }
 
-    // 3. Save Record in DB
+    // 3. Save Record in DB and optionally update Contratista profile
     if (data.nombreCompleto && data.numeroDocumento) {
         const currentPeriod = data.periodo || new Date().toISOString().substring(0, 7);
+        
+        // Save execution record
         await Record.findOneAndUpdate(
             { documento: data.numeroDocumento, entidad: entity, periodo: currentPeriod },
             {
@@ -103,6 +105,48 @@ export const executeEntityAutomation = async (entity, data) => {
             },
             { upsert: true }
         );
+
+        // Update or create contractor profile if requested
+        if (data.saveProfile) {
+            const commonFields = ['nombreCompleto', 'numeroDocumento', 'tipoDocumento'];
+            const profileUpdate = {
+                nombreCompleto: data.nombreCompleto,
+                numeroDocumento: data.numeroDocumento,
+                tipoDocumento: data.tipoDocumento || 'CC',
+                isActive: true
+            };
+
+            // Identify extra fields to store in perEntityData
+            const extraFields = {};
+            Object.keys(data).forEach(key => {
+                if (!commonFields.includes(key) && key !== 'saveProfile' && key !== 'periodo') {
+                    extraFields[key] = data[key];
+                }
+            });
+
+            const contratista = await Contratista.findOne({ numeroDocumento: data.numeroDocumento });
+            if (contratista) {
+                contratista.nombreCompleto = profileUpdate.nombreCompleto;
+                // Merge entity data
+                const currentEntityData = contratista.perEntityData ? Object.fromEntries(contratista.perEntityData) : {};
+                contratista.perEntityData = {
+                    ...currentEntityData,
+                    [entity]: {
+                        ...(currentEntityData[entity] || {}),
+                        ...extraFields
+                    }
+                };
+                await contratista.save();
+            } else {
+                await Contratista.create({
+                    ...profileUpdate,
+                    perEntityData: {
+                        [entity]: extraFields
+                    }
+                });
+            }
+            logger.info(`Perfil de contratista ${data.nombreCompleto} guardado/actualizado.`);
+        }
     }
 
     return {

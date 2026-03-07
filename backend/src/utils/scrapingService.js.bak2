@@ -8,14 +8,6 @@ import fs from 'fs';
 chromium.use(StealthPlugin());
 
 /**
- * Añade un retraso aleatorio para simular comportamiento humano
- */
-async function randomDelay(page, min = 1500, max = 4000) {
-    const delay = Math.floor(Math.random() * (max - min + 1)) + min;
-    await page.waitForTimeout(delay);
-}
-
-/**
  * Resuelve captchas básicos de imagen usando OCR (Tesseract.js)
  */
 async function solveImageCaptcha(page, selector) {
@@ -54,21 +46,16 @@ export const scrapeAportes = async (data) => {
     try {
         logger.info('🚀 [Aportes] Iniciando proceso en Autoservicio...');
         await page.goto('https://empresas.aportesenlinea.com/Autoservicio/CertificadoAportes.aspx', { waitUntil: 'networkidle' });
-        await randomDelay(page, 2000, 4000);
 
         logger.info('📝 [Aportes] Completando formulario de identidad...');
         await page.selectOption('#ddlTipoDocumentoEmisor', data.tipoDocumento || 'CC');
-        await randomDelay(page, 1000, 2500);
         await page.fill('#txtNumeroDocumentoEmisor', data.numeroDocumento);
-        await randomDelay(page, 1000, 2500);
         
         // El año y mes dependen de como este el sitio, esto es placeholder basado en URLs comunes
         logger.info('⏳ [Aportes] Verificando si existe captcha...');
-        await randomDelay(page, 2000, 3500);
         const captchaText = await solveImageCaptcha(page, '#imgCaptcha');
         if (captchaText) {
             await page.fill('#txtCaptcha', captchaText);
-            await randomDelay(page, 1000, 2000);
         }
 
         logger.info('🖱️ [Aportes] Haciendo clic en consultar...');
@@ -107,34 +94,25 @@ export const scrapeMiPlanilla = async (data) => {
     try {
         logger.info('🚀 [MiPlanilla] Navegando a Consulta Independiente...');
         await page.goto('https://www.miplanilla.com/Private/Consultaplanillaindependiente.aspx', { waitUntil: 'networkidle' });
-        await randomDelay(page, 2000, 5000);
 
-        logger.info('📝 [MiPlanilla] Configurando formulario...');
-        await page.selectOption('#cp1_ddlTipoIdentificacion', data.tipoDocumento || 'CC');
-        await randomDelay(page, 1000, 2000);
-        await page.fill('#cp1_txtNumeroIdentificacion', data.numeroDocumento);
-        await randomDelay(page, 1000, 2000);
+        logger.info('📝 [MiPlanilla] Seleccionando tipo de aporte y documento...');
+        await page.check('input[value="1"]'); // Independiente
+        await page.selectOption('#ddlTipoIdentificacion', data.tipoDocumento || 'CC');
+        await page.fill('#txtNumeroIdentificacion', data.numeroDocumento);
 
         if (data.periodo) {
             const [year, month] = data.periodo.split('-');
-            await page.selectOption('#cp1_ddlMesDesde', parseInt(month).toString());
-            await randomDelay(page, 500, 1500);
-            await page.selectOption('#cp1_ddlAnioDesde', year);
-            await randomDelay(page, 500, 1500);
+            await page.selectOption('#ddlMesDesde', parseInt(month).toString());
+            await page.selectOption('#ddlAnioDesde', year);
         }
 
         logger.info('⏳ [MiPlanilla] Buscando captchas o retos...');
-        await randomDelay(page, 2000, 4000);
-        // Selector genérico para atrapar la imagen del captcha en varias plataformas
-        const captchaVal = await solveImageCaptcha(page, 'img[src*="captcha"], img[src*="Captcha"], #imgCaptcha, #cp1_imgCaptcha');
-        if (captchaVal) {
-            await page.fill('#cp1_txtCaptcha', captchaVal);
-            await randomDelay(page, 1000, 2000);
-        }
+        const captchaVal = await solveImageCaptcha(page, '#imgCaptcha');
+        if (captchaVal) await page.fill('#txtCodigoVerificacion', captchaVal);
 
         logger.info('🖱️ [MiPlanilla] Consultando...');
-        await page.click('#cp1_ButtonConsultar');
-        await randomDelay(page, 3000, 6000);
+        await page.click('#btnConsultar');
+        await page.waitForTimeout(2000);
 
         logger.info('📂 [MiPlanilla] Verificando generación de PDF...');
         // Selector placeholder
@@ -171,16 +149,14 @@ export const scrapeEnlace = async (data) => {
     try {
         logger.info('🚀 [Enlace] Accediendo a interssi/.plus...');
         await page.goto('https://www.enlace-apb.com/interssi/.plus', { waitUntil: 'networkidle' });
-        await randomDelay(page, 2000, 4500);
 
         logger.info('📝 [Enlace] Completando credenciales de identidad...');
         // Basado en flujos comunes de Enlace
         await page.fill('input[name="usuario"]', data.numeroDocumento);
-        await randomDelay(page, 1000, 2500);
         
         logger.info('⏳ [Enlace] Procesando página...');
         // Enlace suele tener frames o flujos complejos, esto es una base
-        await randomDelay(page, 2000, 4000);
+        await page.waitForTimeout(2000);
 
         logger.info('⚠️ [Enlace] NOTA: Este sitio suele requerir login previo o sesión activa.');
         await browser.close();
@@ -204,46 +180,34 @@ export const scrapeSOI = async (data) => {
     try {
         logger.info(`🚀 [SOI] Iniciando scraping para Doc: ${data.numeroDocumento}`);
         await page.goto('https://servicio.nuevosoi.com.co/soi/certificadoAportesCotizante.do', { waitUntil: 'networkidle' });
-        await randomDelay(page, 2000, 4000);
 
         logger.info('📝 [SOI] Seleccionando tipo de documento aportante...');
         await page.selectOption('#tipoDocumentoAportante', data.tipoDocumento || 'CC');
-        await randomDelay(page, 1000, 2000);
         await page.fill('#numeroDocumentoAportante', data.numeroDocumento);
-        await randomDelay(page, 1000, 2000);
 
         logger.info('🖱️ [SOI] Clic en Certificados por cotizante...');
         await page.click('a.btn-success:has-text("Certificados por cotizante")');
-        await randomDelay(page, 1500, 3000);
+        await page.waitForTimeout(1000);
 
         logger.info('📝 [SOI] Completando datos del cotizante...');
         await page.selectOption('#tipoDocumentoCotizante', data.tipoDocumento || 'CC');
-        await randomDelay(page, 1000, 2000);
         await page.fill('#numeroDocumentoCotizante', data.numeroDocumento);
-        await randomDelay(page, 1000, 2000);
 
         if (data.eps) {
             logger.info(`🏥 [SOI] Seleccionando EPS: ${data.eps}`);
             await page.selectOption('#administradoraSalud', { label: data.eps });
-            await randomDelay(page, 1000, 2000);
         }
 
         if (data.periodo) {
             const [year, month] = data.periodo.split('-');
             logger.info(`📅 [SOI] Periodo seleccionado: ${year}-${month}`);
             await page.selectOption('#periodoLiqSaludAnnio', year);
-            await randomDelay(page, 600, 1500);
             await page.selectOption('#periodoLiqSaludMes', parseInt(month).toString());
-            await randomDelay(page, 600, 1500);
         }
 
         logger.info('⏳ [SOI] Buscando captcha final...');
-        await randomDelay(page, 2000, 4000);
         const captcha = await solveImageCaptcha(page, '#captchaImg');
-        if (captcha) {
-            await page.fill('#captchaInput', captcha);
-            await randomDelay(page, 1000, 2000);
-        }
+        if (captcha) await page.fill('#captchaInput', captcha);
 
         logger.info('📥 [SOI] Solicitando descarga de PDF...');
         const downloadPromise = page.waitForEvent('download').catch(() => null);

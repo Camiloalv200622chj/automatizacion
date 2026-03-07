@@ -1,5 +1,4 @@
 import Contratista from '../models/Contratista.js';
-import { encrypt, decrypt } from '../utils/crypto.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -8,7 +7,7 @@ import logger from '../utils/logger.js';
  */
 export const createContratista = async (req, res, next) => {
     try {
-        const { nombreCompleto, numeroDocumento, tipoDocumento, passwd } = req.body;
+        const { nombreCompleto, numeroDocumento, tipoDocumento } = req.body;
 
         const exists = await Contratista.findOne({ numeroDocumento });
         if (exists) {
@@ -16,13 +15,10 @@ export const createContratista = async (req, res, next) => {
             throw new Error('El contratista ya existe');
         }
 
-        const encryptedPass = encrypt(passwd);
-
         const contratista = await Contratista.create({
             nombreCompleto,
             numeroDocumento,
-            tipoDocumento,
-            passwd: encryptedPass
+            tipoDocumento
         });
 
         res.status(201).json(contratista);
@@ -51,7 +47,7 @@ export const getContratistas = async (req, res, next) => {
 export const updateContratista = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { nombreCompleto, numeroDocumento, tipoDocumento, passwd, isActive } = req.body;
+        const { nombreCompleto, numeroDocumento, tipoDocumento, isActive, perEntityData } = req.body;
 
         const contratista = await Contratista.findById(id);
 
@@ -60,9 +56,9 @@ export const updateContratista = async (req, res, next) => {
             contratista.numeroDocumento = numeroDocumento || contratista.numeroDocumento;
             contratista.tipoDocumento = tipoDocumento || contratista.tipoDocumento;
             contratista.isActive = isActive !== undefined ? isActive : contratista.isActive;
-
-            if (passwd) {
-                contratista.passwd = encrypt(passwd);
+            
+            if (perEntityData) {
+                contratista.perEntityData = new Map(Object.entries(perEntityData));
             }
 
             const updatedContratista = await contratista.save();

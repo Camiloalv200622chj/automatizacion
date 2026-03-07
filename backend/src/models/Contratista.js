@@ -18,9 +18,9 @@ const contratistaSchema = new mongoose.Schema({
         enum: ['CC', 'TI', 'CE', 'PEP'],
         default: 'CC'
     },
-    passwd: {
-        type: String,
-        required: [true, 'Las credenciales (contraseña) son obligatorias']
+    perEntityData: {
+        type: mongoose.Schema.Types.Mixed,
+        default: {}
     },
     isActive: {
         type: Boolean,
