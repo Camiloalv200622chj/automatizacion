@@ -34,6 +34,7 @@ const entityFields: Record<string, any[]> = {
   soi: [
     { name: 'tipoDocumento', label: 'Tipo de Documento', type: 'select', options: ['CC', 'CE', 'TI'] },
     { name: 'numeroDocumento', label: 'Número de Documento', type: 'text' },
+    { name: 'eps', label: 'EPS (Nombre completo)', type: 'text', placeholder: 'Ej: EPS SANITAS' },
     { name: 'periodo', label: 'Periodo (Mes y Año)', type: 'month' }
   ]
 };
@@ -53,7 +54,10 @@ const submitForm = async () => {
     try {
         const response = await axios.post('/api/automation/run-entity', {
             entity: props.entity,
-            data: formData
+            data: {
+                ...formData,
+                saveProfile: formData.saveProfile // Explicitly include the flag
+            }
         });
         success.value = true;
         console.log('Respuesta del servidor:', response.data);
@@ -97,6 +101,13 @@ const submitForm = async () => {
         />
       </div>
 
+      <div class="form-group checkbox-group">
+        <label class="checkbox-label">
+          <input type="checkbox" v-model="formData.saveProfile" />
+          Recordar mis datos para futuras consultas
+        </label>
+      </div>
+
       <button type="submit" class="btn-primary w-full mt-4" :disabled="loading">
         {{ loading ? 'Procesando...' : 'Generar Certificado ✨' }}
       </button>
@@ -137,6 +148,30 @@ input:focus, select:focus {
 
 .w-full { width: 100%; }
 .mt-4 { margin-top: 1rem; }
+
+.mt-4 { margin-top: 1rem; }
+
+.checkbox-group {
+    margin-top: 1rem;
+    flex-direction: row !important;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: #94a3b8;
+}
+
+.checkbox-label input {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
 
 h2 { margin-top: 0; margin-bottom: 2rem; font-size: 1.5rem; color: #60a5fa; }
 
