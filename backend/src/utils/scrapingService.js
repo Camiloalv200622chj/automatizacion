@@ -49,6 +49,7 @@ export const scrapeAportes = async (data) => {
     const browser = await chromium.launch({ headless: false }); // User wants to see? Let's use headless but logs are key
     const context = await browser.newContext({ acceptDownloads: true });
     const page = await context.newPage();
+    page.setDefaultTimeout(60000);
     const downloadPath = path.resolve('temp_downloads');
 
     try {
@@ -61,8 +62,29 @@ export const scrapeAportes = async (data) => {
         await randomDelay(page, 1000, 2500);
         await page.fill('#txtNumeroDocumentoEmisor', data.numeroDocumento);
         await randomDelay(page, 1000, 2500);
-        
-        // El año y mes dependen de como este el sitio, esto es placeholder basado en URLs comunes
+
+        if (data.fechaExpedicion) {
+            logger.info(`📅 [Aportes] Ingresando Fecha de Expedición: ${data.fechaExpedicion}`);
+            // Intentamos llenar si el campo existe en la interfaz real
+            await page.fill('input[id*="Expedicion"]', data.fechaExpedicion).catch(() => logger.warn('⚠️ No se halló campo de Fecha de Expedición'));
+            await randomDelay(page, 800, 1500);
+        }
+
+        if (data.eps) {
+            logger.info(`🏥 [Aportes] Ingresando EPS: ${data.eps}`);
+            await page.fill('input[id*="Eps"], input[id*="EPS"]', data.eps).catch(() => logger.warn('⚠️ No se halló campo de EPS'));
+            await randomDelay(page, 800, 1500);
+        }
+
+        if (data.periodo) {
+            const [year, month] = data.periodo.split('-');
+            logger.info(`📅 [Aportes] Periodo seleccionado: ${year}-${month}`);
+            // Selectores posibles para año y mes
+            await page.selectOption('select[id*="Anio"], select[id*="Anno"]', year).catch(() => null);
+            await randomDelay(page, 500, 1000);
+            await page.selectOption('select[id*="Mes"]', parseInt(month).toString()).catch(() => null);
+            await randomDelay(page, 500, 1000);
+        }
         logger.info('⏳ [Aportes] Verificando si existe captcha...');
         await randomDelay(page, 2000, 3500);
         const captchaText = await solveImageCaptcha(page, '#imgCaptcha');
@@ -102,6 +124,7 @@ export const scrapeMiPlanilla = async (data) => {
     const browser = await chromium.launch({ headless: false });
     const context = await browser.newContext({ acceptDownloads: true });
     const page = await context.newPage();
+    page.setDefaultTimeout(60000);
     const downloadPath = path.resolve('temp_downloads');
 
     try {
@@ -110,17 +133,36 @@ export const scrapeMiPlanilla = async (data) => {
         await randomDelay(page, 2000, 5000);
 
         logger.info('📝 [MiPlanilla] Configurando formulario...');
-        await page.selectOption('#cp1_ddlTipoIdentificacion', data.tipoDocumento || 'CC');
+        await page.waitForSelector('select[id*="TipoIdentificacion"], select[name*="tipo_doc"]', { timeout: 15000 }).catch(() => logger.warn('⚠️ Select de tipo de documento tardó en cargar'));
+        await page.selectOption('select[id*="TipoIdentificacion"], select[name*="tipo_doc"]', data.tipoDocumento || 'CC').catch(() => null);
         await randomDelay(page, 1000, 2000);
-        await page.fill('#cp1_txtNumeroIdentificacion', data.numeroDocumento);
+        await page.fill('input[id*="NumeroIdentificacion"], input[name*="documento"]', data.numeroDocumento).catch(() => null);
         await randomDelay(page, 1000, 2000);
 
-        if (data.periodo) {
-            const [year, month] = data.periodo.split('-');
-            await page.selectOption('#cp1_ddlMesDesde', parseInt(month).toString());
+        if (data.periodoSalud) {
+            const [year, month] = data.periodoSalud.split('-');
+            await page.selectOption('#cp1_ddlMesDesde', parseInt(month).toString()).catch(() => null);
             await randomDelay(page, 500, 1500);
-            await page.selectOption('#cp1_ddlAnioDesde', year);
+            await page.selectOption('#cp1_ddlAnioDesde', year).catch(() => null);
             await randomDelay(page, 500, 1500);
+        }
+
+        if (data.numeroPlanilla) {
+            logger.info(`📝 [MiPlanilla] Ingresando número de planilla: ${data.numeroPlanilla}`);
+            await page.fill('input[id*="Planilla"], input[id*="NumPlanilla"]', data.numeroPlanilla).catch(() => null);
+            await randomDelay(page, 500, 1000);
+        }
+
+        if (data.fechaPago) {
+            logger.info(`📅 [MiPlanilla] Ingresando fecha de pago: ${data.fechaPago}`);
+            await page.fill('input[id*="FechaPago"]', data.fechaPago).catch(() => null);
+            await randomDelay(page, 500, 1000);
+        }
+
+        if (data.valorPagado) {
+            logger.info(`💰 [MiPlanilla] Ingresando valor pagado: ${data.valorPagado}`);
+            await page.fill('input[id*="Valor"], input[id*="Total"]', data.valorPagado).catch(() => null);
+            await randomDelay(page, 500, 1000);
         }
 
         logger.info('⏳ [MiPlanilla] Buscando captchas o retos...');
@@ -161,32 +203,52 @@ export const scrapeMiPlanilla = async (data) => {
 };
 
 /**
- * Lógica para Enlace
+ * Lógica para Asopagos (antes Enlace Operativo)
  */
-export const scrapeEnlace = async (data) => {
+export const scrapeAsopagos = async (data) => {
     const browser = await chromium.launch({ headless: false });
     const context = await browser.newContext({ acceptDownloads: true });
     const page = await context.newPage();
+    page.setDefaultTimeout(60000);
 
     try {
-        logger.info('🚀 [Enlace] Accediendo a interssi/.plus...');
+        logger.info('🚀 [Asopagos] Accediendo a interssi/.plus o página de Asopagos...');
         await page.goto('https://www.enlace-apb.com/interssi/.plus', { waitUntil: 'networkidle' });
         await randomDelay(page, 2000, 4500);
 
-        logger.info('📝 [Enlace] Completando credenciales de identidad...');
-        // Basado en flujos comunes de Enlace
-        await page.fill('input[name="usuario"]', data.numeroDocumento);
+        logger.info('📝 [Asopagos] Completando credenciales de identidad...');
+        
+        if (data.tipoDocumento) {
+            logger.info(`📝 [Asopagos] Seleccionando tipo de documento: ${data.tipoDocumento}`);
+            await page.selectOption('select[id*="TipoDoc"], select[name*="tipo_doc"]', data.tipoDocumento).catch(() => null);
+            await randomDelay(page, 500, 1000);
+        }
+
+        await page.fill('input[name="usuario"], input[name*="documento"], input[id*="Documento"]', data.numeroDocumento).catch(() => null);
         await randomDelay(page, 1000, 2500);
         
-        logger.info('⏳ [Enlace] Procesando página...');
-        // Enlace suele tener frames o flujos complejos, esto es una base
+        if (data.periodo) {
+            const [year, month] = data.periodo.split('-');
+            logger.info(`📅 [Asopagos] Año y mes seleccionados: ${year}-${month}`);
+            await page.selectOption('select[id*="Anio"], select[name*="anio"]', year).catch(() => null);
+            await randomDelay(page, 500, 1000);
+            await page.selectOption('select[id*="Mes"], select[name*="mes"]', parseInt(month).toString()).catch(() => null);
+            await randomDelay(page, 500, 1000);
+        }
+
+        const tipoReporte = data.tipoReporte || 'Pago sin valores';
+        logger.info(`📄 [Asopagos] Seleccionando tipo de reporte: ${tipoReporte}`);
+        await page.selectOption('select[id*="Reporte"], select[name*="tipo_reporte"]', tipoReporte).catch(() => null);
+        await randomDelay(page, 500, 1000);
+
+        logger.info('⏳ [Asopagos] Procesando página...');
         await randomDelay(page, 2000, 4000);
 
-        logger.info('⚠️ [Enlace] NOTA: Este sitio suele requerir login previo o sesión activa.');
+        logger.info('⚠️ [Asopagos] NOTA: Este sitio suele requerir login previo o sesión activa.');
         await browser.close();
         return null;
     } catch (error) {
-        logger.error(`❌ [Enlace] Error: ${error.message}`);
+        logger.error(`❌ [Asopagos] Error: ${error.message}`);
         await browser.close();
         throw error;
     }
@@ -199,6 +261,7 @@ export const scrapeSOI = async (data) => {
     const browser = await chromium.launch({ headless: false });
     const context = await browser.newContext({ acceptDownloads: true });
     const page = await context.newPage();
+    page.setDefaultTimeout(60000);
     const downloadPath = path.resolve('temp_downloads');
 
     try {
@@ -221,12 +284,6 @@ export const scrapeSOI = async (data) => {
         await randomDelay(page, 1000, 2000);
         await page.fill('#numeroDocumentoCotizante', data.numeroDocumento);
         await randomDelay(page, 1000, 2000);
-
-        if (data.eps) {
-            logger.info(`🏥 [SOI] Seleccionando EPS: ${data.eps}`);
-            await page.selectOption('#administradoraSalud', { label: data.eps });
-            await randomDelay(page, 1000, 2000);
-        }
 
         if (data.periodo) {
             const [year, month] = data.periodo.split('-');
@@ -283,8 +340,8 @@ export const downloadCertificate = async (contratista, entityData = null) => {
                 return await scrapeMiPlanilla(data);
             case 'aportes':
                 return await scrapeAportes(data);
-            case 'enlace':
-                return await scrapeEnlace(data);
+            case 'asopagos':
+                return await scrapeAsopagos(data);
             default:
                 logger.warn(`🛑 Entidad no soportada: ${entity}`);
         }

@@ -2,7 +2,7 @@
 const entities = [
   { id: 'aportes', name: 'Aportes en Línea', url: 'https://empresas.aportesenlinea.com' },
   { id: 'miplanilla', name: 'miplanilla.com', url: 'https://www.miplanilla.com' },
-  { id: 'enlace', name: 'Enlace Operativo', url: 'https://www.enlace-apb.com' },
+  { id: 'asopagos', name: 'Asopagos (antes Enlace Operativo)', url: 'https://www.enlace-apb.com' },
   { id: 'soi', name: 'SOI', url: 'https://servicio.nuevosoi.com.co' }
 ];
 

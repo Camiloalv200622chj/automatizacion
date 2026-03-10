@@ -17,15 +17,17 @@ const entityFields: Record<string, any[]> = {
     { name: 'numeroDocumento', label: 'Número de Documento', type: 'text' },
     { name: 'fechaExpedicion', label: 'Fecha de Expedición', type: 'date' },
     { name: 'eps', label: 'EPS', type: 'text', placeholder: 'Ej: Sanitas' },
-    { name: 'periodoInicio', label: 'Mes Inicio', type: 'month' },
-    { name: 'periodoFin', label: 'Mes Fin', type: 'month' }
+    { name: 'periodo', label: 'Año y Mes', type: 'month' }
   ],
   miplanilla: [
     { name: 'tipoDocumento', label: 'Tipo de Documento', type: 'select', options: ['CC', 'NIT', 'CE'] },
     { name: 'numeroDocumento', label: 'Número de Documento', type: 'text' },
-    { name: 'periodo', label: 'Periodo (Mes y Año)', type: 'month' }
+    { name: 'numeroPlanilla', label: 'Número de Planilla', type: 'text' },
+    { name: 'fechaPago', label: 'Fecha de Pago (Día/Mes/Año)', type: 'date' },
+    { name: 'periodoSalud', label: 'Periodo de Pago Salud (Mes/Año)', type: 'month' },
+    { name: 'valorPagado', label: 'Valor Total Pagado', type: 'number' }
   ],
-  enlace: [
+  asopagos: [
     { name: 'tipoDocumento', label: 'Tipo de Documento', type: 'select', options: ['CC', 'CE', 'TI'] },
     { name: 'numeroDocumento', label: 'Número de Documento', type: 'text' },
     { name: 'periodo', label: 'Año y Mes (aaaa-mm)', type: 'month' },
@@ -34,8 +36,7 @@ const entityFields: Record<string, any[]> = {
   soi: [
     { name: 'tipoDocumento', label: 'Tipo de Documento', type: 'select', options: ['CC', 'CE', 'TI'] },
     { name: 'numeroDocumento', label: 'Número de Documento', type: 'text' },
-    { name: 'eps', label: 'EPS (Nombre completo)', type: 'text', placeholder: 'Ej: EPS SANITAS' },
-    { name: 'periodo', label: 'Periodo (Mes y Año)', type: 'month' }
+    { name: 'periodo', label: 'Periodo de Pago (Mes y Año)', type: 'month' }
   ]
 };
 
