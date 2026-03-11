@@ -16,9 +16,11 @@ class GoogleDriveService {
 
     init() {
         try {
-            const keyPath = path.resolve('gen-lang-client-0315680802-f1c2bf334cb0.json');
+            // Nombre del archivo de credenciales de Google Cloud (Service Account JSON)
+            const keyPath = path.resolve('google-credentials.json');
+            
             if (!fs.existsSync(keyPath)) {
-                logger.warn('Archivo gen-lang-client-0315680802-f1c2bf334cb0.json no encontrado. Google Drive no estará disponible.');
+                logger.warn('Archivo "google-credentials.json" no encontrado en la raíz del backend. Google Drive no estará disponible.');
                 return;
             }
 
@@ -28,9 +30,9 @@ class GoogleDriveService {
             });
 
             this.drive = google.drive({ version: 'v3', auth });
-            logger.info('✅ Google Drive Service Inicializado');
+            logger.info('✅ Google Drive Service Inicializado correctamente');
         } catch (error) {
-            logger.error(`Error inicializando Google Drive: ${error.message}`);
+            logger.error(`❌ Error inicializando Google Drive: ${error.message}`);
         }
     }
 

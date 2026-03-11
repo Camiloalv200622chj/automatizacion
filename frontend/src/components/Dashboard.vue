@@ -1,10 +1,10 @@
-<script setup lang="ts">
+<script setup>
 import { ref, onMounted } from 'vue';
 import axios from 'axios';
 
 const loading = ref(true);
-const error = ref<string | null>(null);
-const report = ref<any[]>([]);
+const error = ref(null);
+const report = ref([]);
 const period = ref(new Date().toISOString().substring(0, 7));
 
 const fetchStatus = async () => {
@@ -13,7 +13,7 @@ const fetchStatus = async () => {
     try {
         const response = await axios.get(`/api/automation/status?period=${period.value}`);
         report.value = response.data.report;
-    } catch (err: any) {
+    } catch (err) {
         error.value = 'Error al cargar el estado de cumplimiento';
         console.error(err);
     } finally {

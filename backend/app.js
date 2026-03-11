@@ -14,6 +14,15 @@ import { setupCronJobs } from './src/utils/cronJob.js';
 // Cargar variables de entorno
 dotenv.config();
 
+// Escudo contra caídas inesperadas (Uncaught Exceptions)
+process.on('uncaughtException', (error) => {
+    console.error('❌ ERROR NO CAPTURADO (Escudo):', error.message);
+});
+
+process.on('unhandledRejection', (reason) => {
+    console.error('❌ PROMESA RECHAZADA (Escudo):', reason);
+});
+
 // Conectar a la base de datos
 connectDB();
 

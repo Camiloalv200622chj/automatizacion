@@ -27,6 +27,16 @@ const recordSchema = new mongoose.Schema({
         type: String,
         enum: ['success', 'failed'],
         default: 'success'
+    },
+    errorMessage: {
+        type: String,
+        trim: true
+    },
+    driveFileId: {
+        type: String
+    },
+    driveLink: {
+        type: String
     }
 }, {
     timestamps: true

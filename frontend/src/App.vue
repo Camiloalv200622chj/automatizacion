@@ -1,18 +1,18 @@
-<script setup lang="ts">
+<script setup>
 import { ref } from 'vue';
 import EntitySelector from './components/EntitySelector.vue';
 import DynamicForm from './components/DynamicForm.vue';
 import Dashboard from './components/Dashboard.vue';
 
 const activeTab = ref('form');
-const selectedEntity = ref<string | null>(null);
+const selectedEntity = ref(null);
 const showModal = ref(false);
 
 const openModal = () => {
   showModal.value = true;
 };
 
-const handleEntitySelect = (entity: string) => {
+const handleEntitySelect = (entity) => {
   selectedEntity.value = entity;
   showModal.value = false;
 };

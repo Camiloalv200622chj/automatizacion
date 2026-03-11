@@ -1,32 +1,64 @@
-import { chromium } from 'playwright-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import Tesseract from 'tesseract.js';
+import { chromium } from 'playwright';
 import logger from './logger.js';
 import path from 'path';
 import fs from 'fs';
-
-chromium.use(StealthPlugin());
+import { processCertificate } from './fileService.js'; // Importamos el procesador de archivos
 
 /**
- * Resuelve captchas básicos de imagen usando OCR (Tesseract.js)
+ * Escribe texto simulando a un humano
  */
-async function solveImageCaptcha(page, selector) {
+async function typeLikeHuman(page, selector, text) {
     try {
-        const element = await page.$(selector);
-        if (!element) return null;
+        await page.waitForSelector(selector, { state: 'visible', timeout: 5000 });
+        const element = page.locator(selector);
+        await element.click();
+        await element.fill(''); 
+        await element.pressSequentially(text, { delay: 120 });
+        await page.waitForTimeout(400);
+    } catch (e) {
+        logger.warn(`No se pudo teclear en ${selector}: ${e.message}`);
+    }
+}
 
-        const screenshotPath = path.resolve('temp_captcha.png');
-        await element.screenshot({ path: screenshotPath });
+/**
+ * Selecciona una opción con búsqueda flexible y clics humanos
+ */
+async function selectOptionLikeHuman(page, selector, searchText) {
+    if (!searchText) return;
+    try {
+        await page.waitForSelector(selector, { state: 'visible', timeout: 10000 });
+        await page.locator(selector).click();
+        await page.waitForTimeout(1000);
 
-        const { data: { text } } = await Tesseract.recognize(screenshotPath, 'eng');
-        fs.unlinkSync(screenshotPath);
+        const targetValue = await page.evaluate(({ sel, text }) => {
+            const select = document.querySelector(sel);
+            const options = Array.from(select.options);
+            const search = text.trim().toLowerCase();
+            const clean = (str) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const cleanSearch = clean(search);
 
-        const cleanedText = text.replace(/[^a-zA-Z0-9]/g, '').trim();
-        logger.info(`Captcha detectado (OCR): ${cleanedText}`);
-        return cleanedText;
-    } catch (error) {
-        logger.error(`Error resolviendo captcha: ${error.message}`);
-        return null;
+            let found = options.find(opt => clean(opt.text).includes(cleanSearch) || clean(opt.value) === cleanSearch);
+            if (!found && /\d+/.test(search)) {
+                const number = search.match(/\d+/)[0];
+                found = options.find(opt => opt.text.includes(number));
+            }
+            if (!found) {
+                const keywords = search.split(/[\s\-\.]+/).filter(k => k.length > 2);
+                found = options.find(opt => keywords.every(key => opt.text.toLowerCase().includes(key)));
+            }
+            return found ? found.value : null;
+        }, { sel: selector, text: searchText });
+
+        if (targetValue) {
+            await page.selectOption(selector, targetValue);
+            await page.evaluate((sel) => {
+                const el = document.querySelector(sel);
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            }, selector);
+        }
+        await page.waitForTimeout(800);
+    } catch (e) {
+        logger.warn(`Fallo selección humana en ${selector}: ${e.message}`);
     }
 }
 
@@ -34,88 +66,94 @@ async function solveImageCaptcha(page, selector) {
  * Lógica específica para SOI
  */
 export const scrapeSOI = async (data) => {
-    const browser = await chromium.launch({ headless: true });
-    // Configurar descarga
-    const downloadPath = path.resolve('temp_downloads');
-    if (!fs.existsSync(downloadPath)) fs.mkdirSync(downloadPath);
-
-    const context = await browser.newContext({
-        acceptDownloads: true
-    });
-    const page = await context.newPage();
-
+    let browser;
     try {
-        logger.info(`Iniciando scraping para SOI - Doc: ${data.numeroDocumento}`);
-        await page.goto('https://servicio.nuevosoi.com.co/soi/certificadoAportesCotizante.do', { waitUntil: 'networkidle' });
+        browser = await chromium.launch({ 
+            headless: false,
+            channel: 'msedge', 
+            slowMo: 100 
+        });
+        
+        const downloadPath = path.resolve('temp_downloads');
+        if (!fs.existsSync(downloadPath)) fs.mkdirSync(downloadPath);
 
-        // 1. Datos del aportante (Initial Section)
-        // Nota: Los datos del aportante deberían venir en el objeto 'data' o estar pre-configurados
-        // Por ahora usamos los que el usuario proporcione o valores por defecto si faltan
-        await page.selectOption('#tipoDocumentoAportante', data.tipoDocumentoAportante || 'CC');
-        await page.fill('input.form-control', data.documentoAportante || data.numeroDocumento);
+        const context = await browser.newContext({ acceptDownloads: true });
+        const page = await context.newPage();
 
-        // Clic en Certificados por cotizante
-        await page.click('a.btn.btn-success:has-text("Certificados por cotizante")');
-        await page.waitForTimeout(1000);
+        logger.info(`Iniciando sesión para SOI - Doc: ${data.numeroDocumento}`);
+        await page.goto('https://servicio.nuevosoi.com.co/soi/certificadoAportesCotizante.do', { 
+            waitUntil: 'networkidle',
+            timeout: 60000 
+        });
 
-        // 2. Información del cotizante
-        await page.selectOption('#tipoDocumentoCotizante', data.tipoDocumento || 'CC');
-        await page.fill('#numeroDocumentoCotizante', data.numeroDocumento);
+        await selectOptionLikeHuman(page, '#tipoDocumentoAportante', data.tipoDocumentoAportante || 'Cédula de Ciudadanía');
+        await typeLikeHuman(page, 'input[name="numeroDocumentoAportante"]', data.numeroDocumentoAportante || data.numeroDocumento);
 
+        await selectOptionLikeHuman(page, '#tipoDocumentoCotizante', data.tipoDocumento || 'Cédula de Ciudadanía');
+        await typeLikeHuman(page, '#numeroDocumentoCotizante', data.numeroDocumento);
+        
         if (data.eps) {
-            await page.selectOption('#administradoraSalud', { label: data.eps });
+            await selectOptionLikeHuman(page, '#administradoraSalud', data.eps);
         }
 
-        // Periodo (Año y Mes)
-        // data.periodo viene como "YYYY-MM"
         if (data.periodo) {
             const [year, month] = data.periodo.split('-');
+            const monthInt = parseInt(month).toString();
+            await page.selectOption('#periodoLiqSaludMes', monthInt);
             await page.selectOption('#periodoLiqSaludAnnio', year);
-            await page.selectOption('#periodoLiqSaludMes', parseInt(month).toString());
         }
 
-        logger.info('SOI: Formulario completado. Iniciando descarga...');
+        await page.waitForTimeout(2000);
 
-        // 3. Manejar descarga
-        const downloadPromise = page.waitForEvent('download');
-        await page.click('button.btn-success:has-text("Descargar PDF")');
+        logger.info('SOI: Intentando descargar archivo...');
+        const downloadPromise = page.waitForEvent('download', { timeout: 40000 });
+        
+        const downloadButton = page.locator('button:has-text("Descargar PDF"), input[value="Descargar PDF"], .btn-success:has-text("Descargar")').first();
+        await downloadButton.click();
+        
         const download = await downloadPromise;
+        const originalName = download.suggestedFilename();
+        const extension = originalName.toLowerCase().endsWith('.zip') ? '.zip' : '.pdf';
+        
+        const tempFilePath = path.join(downloadPath, `temp_download_${Date.now()}${extension}`);
+        await download.saveAs(tempFilePath);
+        
+        logger.info(`Archivo descargado: ${originalName}. Procesando...`);
 
-        const fileName = `SOI_${data.numeroDocumento}_${data.periodo}.pdf`;
-        const filePath = path.join(downloadPath, fileName);
-        await download.saveAs(filePath);
+        // Usamos el servicio de archivos para descomprimir y renombrar correctamente
+        const finalPdfPath = await processCertificate(tempFilePath, {
+            nombreCompleto: data.nombreCompleto || 'Contratista',
+            numeroDocumento: data.numeroDocumento,
+            periodo: data.periodo
+        });
 
+        await page.waitForTimeout(2000);
         await browser.close();
-        return filePath;
+        return finalPdfPath;
+
     } catch (error) {
-        logger.error(`Error en scraping SOI: ${error.message}`);
-        if (browser) await browser.close();
+        logger.error(`Error en flujo SOI: ${error.message}`);
+        if (browser) {
+            try { await browser.close(); } catch (e) { /* ignore */ }
+        }
         throw error;
     }
 };
 
 /**
- * Orquestador de descargas por entidad
+ * Orquestador de descargas
  */
 export const downloadCertificate = async (contratista, entityData = null) => {
     if (entityData) {
         const { entity, data } = entityData;
-        logger.info(`Solicitud de automatización manual para entidad: ${entity}`);
-
-        switch (entity) {
-            case 'soi':
-                return await scrapeSOI(data);
-            case 'miplanilla':
-                return await scrapeMiPlanilla(data);
-            case 'aportes':
-                // return await scrapeAportesEnLinea(data);
-                break;
-            default:
-                logger.warn(`Entidad no soportada: ${entity}`);
+        try {
+            if (entity === 'soi') return await scrapeSOI(data);
+            if (entity === 'miplanilla') return await scrapeMiPlanilla(data);
+        } catch (e) {
+            logger.error(`Error en orquestador para ${entity}: ${e.message}`);
+            throw e;
         }
     }
-
-    // Lógica por defecto para cron job...
     return null;
 };
 
@@ -123,52 +161,34 @@ export const downloadCertificate = async (contratista, entityData = null) => {
  * Lógica específica para MiPlanilla
  */
 export const scrapeMiPlanilla = async (data) => {
-    const browser = await chromium.launch({ headless: true });
-    const downloadPath = path.resolve('temp_downloads');
-    if (!fs.existsSync(downloadPath)) fs.mkdirSync(downloadPath);
-
-    const context = await browser.newContext({ acceptDownloads: true });
-    const page = await context.newPage();
-
+    let browser;
     try {
-        logger.info(`Iniciando scraping para MiPlanilla - Doc: ${data.numeroDocumento}`);
+        browser = await chromium.launch({ headless: false, channel: 'msedge', slowMo: 100 });
+        const downloadPath = path.resolve('temp_downloads');
+        if (!fs.existsSync(downloadPath)) fs.mkdirSync(downloadPath);
+        const context = await browser.newContext({ acceptDownloads: true });
+        const page = await context.newPage();
+
         await page.goto('https://empresas.miplanilla.com/Registro/Certificado/CertificadoAgil', { waitUntil: 'networkidle' });
+        await page.locator('input[name="rdTipoAporte"][value="1"]').click();
+        await selectOptionLikeHuman(page, '#tipoDocumentoAportante', data.tipoDocumento || 'Cédula de Ciudadanía');
+        await typeLikeHuman(page, '#numeroDocumentoAportante', data.numeroDocumento);
 
-        // 1. Tipo de aporte (Aporte propio por defecto si no viene)
-        await page.check('input[name="rdTipoAporte"][value="1"]');
-
-        // 2. Datos del aportante
-        await page.selectOption('#tipoDocumentoAportante', data.tipoDocumento || 'CC');
-        await page.fill('#numeroDocumentoAportante', data.numeroDocumento);
-
-        // 3. Periodo
         if (data.periodo) {
             const [year, month] = data.periodo.split('-');
             const monthInt = parseInt(month).toString();
-
-            await page.selectOption('#mesInicio', monthInt);
-            await page.selectOption('#anioInicio', year);
-            await page.selectOption('#mesFinal', monthInt);
-            await page.selectOption('#anioFinal', year);
+            await selectOptionLikeHuman(page, '#mesInicio', monthInt);
+            await selectOptionLikeHuman(page, '#anioInicio', year);
+            await selectOptionLikeHuman(page, '#mesFinal', monthInt);
+            await selectOptionLikeHuman(page, '#anioFinal', year);
         }
 
-        logger.info('MiPlanilla: Formulario completado. NOTA: Este sitio requiere reCAPTCHA manual o servicio externo.');
-
-        // Aquí es donde normalmente se resolvería el reCAPTCHA si estuviéramos usando un servicio como 2captcha
-        // Por ahora, si no hay CAPTCHA visible o es simple, intentamos continuar.
-        // Si hay reCAPTCHA, Playwright-extra con Stealth a veces ayuda, pero a menudo requiere intervención.
-
-        await page.click('#btnContinuar');
-        await page.waitForTimeout(3000);
-
-        // Intentar manejar descarga si aparece el botón después de consultar
-        // Este es un placeholder ya que el flujo real depende de si hay pagos encontrados
-        logger.info('MiPlanilla: Consulta enviada. Verificando resultados...');
-
+        await page.locator('#btnContinuar').click();
+        await page.waitForTimeout(5000);
         await browser.close();
-        return null; // Placeholder hasta confirmar el selector final del PDF en MiPlanilla
+        return null; 
     } catch (error) {
-        logger.error(`Error en scraping MiPlanilla: ${error.message}`);
+        logger.error(`Error en MiPlanilla: ${error.message}`);
         if (browser) await browser.close();
         throw error;
     }

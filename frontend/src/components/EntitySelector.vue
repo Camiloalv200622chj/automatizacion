@@ -1,4 +1,4 @@
-<script setup lang="ts">
+<script setup>
 const entities = [
   { id: 'aportes', name: 'Aportes en Línea', url: 'https://empresas.aportesenlinea.com' },
   { id: 'miplanilla', name: 'miplanilla.com', url: 'https://www.miplanilla.com' },

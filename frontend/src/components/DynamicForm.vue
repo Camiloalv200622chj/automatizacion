@@ -1,19 +1,19 @@
-<script setup lang="ts">
+<script setup>
 import { ref, reactive, computed } from 'vue';
 import axios from 'axios';
 
-const props = defineProps<{
-  entity: string
-}>();
+const props = defineProps({
+  entity: String
+});
 
 const loading = ref(false);
-const error = ref<string | null>(null);
+const error = ref(null);
 const success = ref(false);
-const formData = reactive<Record<string, any>>({});
+const formData = reactive({});
 
-const entityFields: Record<string, any[]> = {
+const entityFields = {
   aportes: [
-    { name: 'tipoDocumento', label: 'Tipo de Documento', type: 'select', options: ['CC', 'CE', 'TI', 'PE', 'PPT'] },
+    { name: 'tipoDocumento', label: 'Tipo de Documento', type: 'select', options: ['Cédula de Ciudadanía', 'Cédula de Extranjería', 'Tarjeta de Identidad', 'Pasaporte', 'Permiso Especial de Permanencia'] },
     { name: 'numeroDocumento', label: 'Número de Documento', type: 'text' },
     { name: 'fechaExpedicion', label: 'Fecha de Expedición', type: 'date' },
     { name: 'eps', label: 'EPS', type: 'text', placeholder: 'Ej: Sanitas' },
@@ -21,20 +21,23 @@ const entityFields: Record<string, any[]> = {
     { name: 'periodoFin', label: 'Mes Fin', type: 'month' }
   ],
   miplanilla: [
-    { name: 'tipoDocumento', label: 'Tipo de Documento', type: 'select', options: ['CC', 'NIT', 'CE'] },
+    { name: 'tipoDocumento', label: 'Tipo de Documento', type: 'select', options: ['Cédula de Ciudadanía', 'NIT', 'Cédula de Extranjería'] },
     { name: 'numeroDocumento', label: 'Número de Documento', type: 'text' },
     { name: 'periodo', label: 'Periodo (Mes y Año)', type: 'month' }
   ],
   enlace: [
-    { name: 'tipoDocumento', label: 'Tipo de Documento', type: 'select', options: ['CC', 'CE', 'TI'] },
+    { name: 'tipoDocumento', label: 'Tipo de Documento', type: 'select', options: ['Cédula de Ciudadanía', 'Cédula de Extranjería', 'Tarjeta de Identidad'] },
     { name: 'numeroDocumento', label: 'Número de Documento', type: 'text' },
     { name: 'periodo', label: 'Año y Mes (aaaa-mm)', type: 'month' },
     { name: 'tipoReporte', label: 'Tipo de Reporte', type: 'select', options: ['Pago sin valores', 'Pago con valores'] }
   ],
   soi: [
-    { name: 'tipoDocumento', label: 'Tipo de Documento', type: 'select', options: ['CC', 'CE', 'TI'] },
-    { name: 'numeroDocumento', label: 'Número de Documento', type: 'text' },
-    { name: 'periodo', label: 'Periodo (Mes y Año)', type: 'month' }
+    { name: 'tipoDocumentoAportante', label: 'Tipo Doc. Aportante *', type: 'select', options: ['Cédula de Ciudadanía', 'NIT', 'Cédula de Extranjería'] },
+    { name: 'numeroDocumentoAportante', label: 'No. de Documento Aportante *', type: 'text' },
+    { name: 'tipoDocumento', label: 'Tipo Doc. Cotizante *', type: 'select', options: ['Cédula de Ciudadanía', 'Cédula de Extranjería', 'Tarjeta de Identidad'] },
+    { name: 'numeroDocumento', label: 'No. de Documento Cotizante *', type: 'text' },
+    { name: 'eps', label: 'EPS *', type: 'text', placeholder: 'Ej: EPS037-NUEVA E.P.S' },
+    { name: 'periodo', label: 'Periodo de Pago (Mes/Año) *', type: 'month' }
   ]
 };
 
@@ -57,7 +60,7 @@ const submitForm = async () => {
         });
         success.value = true;
         console.log('Respuesta del servidor:', response.data);
-    } catch (err: any) {
+    } catch (err) {
         error.value = err.response?.data?.message || 'Error al procesar la solicitud';
         console.error('Error:', err);
     } finally {
