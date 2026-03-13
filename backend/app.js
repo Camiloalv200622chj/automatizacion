@@ -23,11 +23,11 @@ setupCronJobs();
 const app = express();
 
 // Middlewares Globales
-app.use(helmet()); // Seguridad
-app.use(cors());   // CORS
-app.use(express.json()); // Body Parser
-app.use(morgan('dev'));  // Logs de peticiones
-app.use(express.static('public')); // Servir archivos estáticos
+app.use(helmet());
+app.use(cors());
+app.use(express.json());
+app.use(morgan('dev'));
+app.use(express.static('public'));
 
 const PORT = process.env.PORT || 3000;
 
@@ -40,11 +40,11 @@ app.use('/api/contratistas', contratistaRoutes);
 app.use('/api/supervisores', supervisorRoutes);
 app.use('/api/automation', automationRoutes);
 
-// Middleware de Manejo de Errores
+// Manejo de Errores
 app.use(errorHandler);
 
 app.listen(PORT, () => {
-    logger.info(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+    logger.info(`--- SERVIDOR ACTIVO EN PUERTO ${PORT} ---`);
 });
 
 export default app;

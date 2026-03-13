@@ -8,7 +8,7 @@ import logger from '../utils/logger.js';
  */
 export const createContratista = async (req, res, next) => {
     try {
-        const { nombreCompleto, numeroDocumento, tipoDocumento, passwd } = req.body;
+        const { nombreCompleto, numeroDocumento, tipoDocumento, usuarioPortal, passwd } = req.body;
 
         const exists = await Contratista.findOne({ numeroDocumento });
         if (exists) {
@@ -17,11 +17,13 @@ export const createContratista = async (req, res, next) => {
         }
 
         const encryptedPass = encrypt(passwd);
+        logger.info(`Cifrando contraseña para nuevo contratista: ${nombreCompleto}`);
 
         const contratista = await Contratista.create({
             nombreCompleto,
             numeroDocumento,
             tipoDocumento,
+            usuarioPortal,
             passwd: encryptedPass
         });
 
@@ -51,7 +53,7 @@ export const getContratistas = async (req, res, next) => {
 export const updateContratista = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { nombreCompleto, numeroDocumento, tipoDocumento, passwd, isActive } = req.body;
+        const { nombreCompleto, numeroDocumento, tipoDocumento, usuarioPortal, passwd, isActive } = req.body;
 
         const contratista = await Contratista.findById(id);
 
@@ -59,6 +61,7 @@ export const updateContratista = async (req, res, next) => {
             contratista.nombreCompleto = nombreCompleto || contratista.nombreCompleto;
             contratista.numeroDocumento = numeroDocumento || contratista.numeroDocumento;
             contratista.tipoDocumento = tipoDocumento || contratista.tipoDocumento;
+            contratista.usuarioPortal = usuarioPortal || contratista.usuarioPortal;
             contratista.isActive = isActive !== undefined ? isActive : contratista.isActive;
 
             if (passwd) {
@@ -85,6 +88,25 @@ export const deleteContratista = async (req, res, next) => {
         const result = await Contratista.findByIdAndDelete(req.params.id);
         if (result) {
             res.json({ message: 'Contratista eliminado correctamente' });
+        } else {
+            res.status(404);
+            throw new Error('Contratista no encontrado');
+        }
+    } catch (error) {
+        next(error);
+    }
+};
+/**
+ * @desc    Buscar contratista por número de documento
+ * @route   GET /api/contratistas/search/:numeroDocumento
+ */
+export const getContratistaByDocumento = async (req, res, next) => {
+    try {
+        const { numeroDocumento } = req.params;
+        const contratista = await Contratista.findOne({ numeroDocumento });
+
+        if (contratista) {
+            res.json(contratista);
         } else {
             res.status(404);
             throw new Error('Contratista no encontrado');

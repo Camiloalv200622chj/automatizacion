@@ -18,6 +18,11 @@ const contratistaSchema = new mongoose.Schema({
         enum: ['CC', 'TI', 'CE', 'PEP'],
         default: 'CC'
     },
+    usuarioPortal: {
+        type: String,
+        required: [true, 'El usuario del portal es obligatorio'],
+        trim: true
+    },
     passwd: {
         type: String,
         required: [true, 'Las credenciales (contraseña) son obligatorias']
@@ -25,6 +30,17 @@ const contratistaSchema = new mongoose.Schema({
     isActive: {
         type: Boolean,
         default: true
+    },
+    lastAutomationStatus: {
+        type: String,
+        enum: ['success', 'failed', 'pending'],
+        default: 'pending'
+    },
+    lastAutomationDate: {
+        type: Date
+    },
+    lastAutomationLink: {
+        type: String
     }
 }, {
     timestamps: true

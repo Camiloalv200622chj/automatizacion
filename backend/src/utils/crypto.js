@@ -4,7 +4,9 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const ALGORITHM = 'aes-256-cbc';
-const ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef'); // 32 bytes
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY
+    ? Buffer.from(process.env.ENCRYPTION_KEY, 'hex')
+    : Buffer.from('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef', 'hex'); // 32 bytes fallback
 const IV_LENGTH = 16; // For AES, this is always 16
 
 /**

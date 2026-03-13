@@ -1,136 +1,219 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import EntitySelector from './components/EntitySelector.vue';
 import DynamicForm from './components/DynamicForm.vue';
 import Dashboard from './components/Dashboard.vue';
+import Login from './components/Login.vue';
 
-const activeTab = ref('form');
+// 'selector' | 'form' | 'dashboard' | 'login'
+const view = ref<'selector' | 'form' | 'dashboard' | 'login'>('selector');
 const selectedEntity = ref<string | null>(null);
-const showModal = ref(false);
+const isSupervisorLoggedIn = ref(false);
 
-const openModal = () => {
-  showModal.value = true;
-};
+onMounted(() => {
+  const token = localStorage.getItem('supervisorToken');
+  if (token) isSupervisorLoggedIn.value = true;
+});
 
 const handleEntitySelect = (entity: string) => {
   selectedEntity.value = entity;
-  showModal.value = false;
+  view.value = 'form';
 };
 
-const reset = () => {
+const goHome = () => {
   selectedEntity.value = null;
+  view.value = 'selector';
+};
+
+const goToDashboard = () => {
+  view.value = isSupervisorLoggedIn.value ? 'dashboard' : 'login';
+};
+
+const handleLoginSuccess = () => {
+  isSupervisorLoggedIn.value = true;
+  view.value = 'dashboard';
+};
+
+const logout = () => {
+  localStorage.removeItem('supervisorToken');
+  localStorage.removeItem('supervisorData');
+  isSupervisorLoggedIn.value = false;
+  view.value = 'selector';
 };
 </script>
 
 <template>
-  <div class="container">
-    <header>
-      <h1 class="title-gradient">Certificados Automatizados</h1>
-      <p class="subtitle">Gestión mensual de aportes y seguridad social</p>
-    </header>
+  <div class="app-root">
+    <!-- ENTITY SELECTOR: full page landing -->
+    <EntitySelector
+      v-if="view === 'selector'"
+      @select="handleEntitySelect"
+      @go-dashboard="goToDashboard"
+    />
 
-    <main>
-      <div class="nav-tabs mb-8">
-        <button 
-          :class="['tab-link', activeTab === 'form' ? 'active' : '']" 
-          @click="activeTab = 'form'"
-        >
-          Formulario de Carga
-        </button>
-        <button 
-          :class="['tab-link', activeTab === 'dashboard' ? 'active' : '']" 
-          @click="activeTab = 'dashboard'"
-        >
-          Panel Supervisor
-        </button>
-      </div>
-
-      <div v-if="activeTab === 'form'">
-        <div v-if="!selectedEntity" class="hero-selection">
-          <div class="glass p-8">
-            <p class="mb-6 opacity-80">Selecciona una entidad para comenzar el proceso de descarga mensual.</p>
-            <button @click="openModal" class="btn-primary">Nueva Solicitud</button>
+    <!-- DYNAMIC FORM: after entity selected -->
+    <div v-else-if="view === 'form'" class="form-shell">
+      <!-- reuse portal-style header -->
+      <header class="form-header">
+        <div class="logo-area" @click="goHome" style="cursor:pointer">
+          <div class="logo-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22">
+              <path d="M11.644 1.59a.75.75 0 01.712 0l9.75 5.25a.75.75 0 010 1.32l-9.75 5.25a.75.75 0 01-.712 0l-9.75-5.25a.75.75 0 010-1.32l9.75-5.25z"/>
+              <path d="M3.265 10.602l7.668 4.129a2.25 2.25 0 002.134 0l7.668-4.13 1.37.739a.75.75 0 010 1.32l-9.75 5.25a.75.75 0 01-.71 0l-9.75-5.25a.75.75 0 010-1.32l1.37-.738z"/>
+              <path d="M10.933 19.231l-7.668-4.13-1.37.739a.75.75 0 000 1.32l9.75 5.25c.221.12.489.12.71 0l9.75-5.25a.75.75 0 000-1.32l-1.37-.738-7.668 4.13a2.25 2.25 0 01-2.134-.001z"/>
+            </svg>
+          </div>
+          <div>
+            <span class="logo-name">SENA</span>
+            <span class="logo-sub">SERVICIO NACIONAL DE APRENDIZAJE</span>
           </div>
         </div>
-
-        <div v-else class="form-container">
-          <button @click="reset" class="btn-back">← Volver al inicio</button>
-          <DynamicForm :entity="selectedEntity" />
+        <div class="form-nav">
+          <button class="btn-back-header" @click="goHome">← Volver al Portal</button>
         </div>
+      </header>
+      <div class="form-body">
+        <DynamicForm :entity="selectedEntity!" />
       </div>
+    </div>
 
-      <div v-else class="dashboard-container">
-        <Dashboard />
-      </div>
-    </main>
+    <!-- LOGIN: supervisor access -->
+    <div v-else-if="view === 'login'" class="centered-view">
+      <Login @login-success="handleLoginSuccess" />
+      <button class="btn-link-back" @click="goHome">← Volver al inicio</button>
+    </div>
 
-    <!-- Modal para selección de entidad -->
-    <EntitySelector 
-      v-if="showModal" 
-      @close="showModal = false" 
-      @select="handleEntitySelect" 
-    />
+    <!-- DASHBOARD: supervisor panel -->
+    <div v-else-if="view === 'dashboard'" class="dashboard-shell">
+      <header class="form-header">
+        <div class="logo-area" @click="goHome" style="cursor:pointer">
+          <div class="logo-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="22" height="22">
+              <path d="M11.644 1.59a.75.75 0 01.712 0l9.75 5.25a.75.75 0 010 1.32l-9.75 5.25a.75.75 0 01-.712 0l-9.75-5.25a.75.75 0 010-1.32l9.75-5.25z"/>
+              <path d="M3.265 10.602l7.668 4.129a2.25 2.25 0 002.134 0l7.668-4.13 1.37.739a.75.75 0 010 1.32l-9.75 5.25a.75.75 0 01-.71 0l-9.75-5.25a.75.75 0 010-1.32l1.37-.738z"/>
+              <path d="M10.933 19.231l-7.668-4.13-1.37.739a.75.75 0 000 1.32l9.75 5.25c.221.12.489.12.71 0l9.75-5.25a.75.75 0 000-1.32l-1.37-.738-7.668 4.13a2.25 2.25 0 01-2.134-.001z"/>
+            </svg>
+          </div>
+          <div>
+            <span class="logo-name">SENA</span>
+            <span class="logo-sub">SERVICIO NACIONAL DE APRENDIZAJE</span>
+          </div>
+        </div>
+        <div class="form-nav">
+          <span class="supervisor-badge">Panel Supervisor</span>
+          <button class="btn-logout" @click="logout">Cerrar Sesión</button>
+          <button class="btn-back-header" @click="goHome">← Portal</button>
+        </div>
+      </header>
+      <Dashboard />
+    </div>
   </div>
 </template>
 
+<style>
+/* Reset global */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, #app { height: 100%; width: 100%; }
+body { font-family: 'Inter', 'Segoe UI', sans-serif; background: #f5f7f5; }
+</style>
+
 <style scoped>
-.container {
-  min-height: 80vh;
+.app-root {
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  justify-content: center;
 }
 
-.subtitle {
-  font-size: 1.2rem;
-  opacity: 0.7;
-  margin-top: -1.5rem;
-  margin-bottom: 4rem;
-}
-
-.p-8 { padding: 2rem; }
-.mb-6 { margin-bottom: 1.5rem; }
-
-.btn-back {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: white;
-  padding: 8px 16px;
-  border-radius: 8px;
-  margin-bottom: 2rem;
-  cursor: pointer;
-  transition: all 0.3s;
-}
-
-.btn-back:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.nav-tabs {
+/* Shared header */
+.form-header {
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 0 2.5rem;
+  height: 64px;
   display: flex;
-  justify-content: center;
-  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-shrink: 0;
 }
-
-.tab-link {
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
+.logo-area { display: flex; align-items: center; gap: 0.75rem; }
+.logo-icon {
+  width: 38px; height: 38px;
+  background: #39A900; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
   color: white;
-  opacity: 0.6;
-  padding: 10px 20px;
+}
+.logo-name { display: block; font-weight: 800; font-size: 1rem; color: #1a1a1a; letter-spacing: 0.05em; line-height: 1; }
+.logo-sub { display: block; font-size: 0.6rem; color: #6b7280; letter-spacing: 0.08em; text-transform: uppercase; margin-top: 1px; }
+
+.form-nav { display: flex; align-items: center; gap: 1rem; }
+.btn-back-header {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  color: #374151;
+  padding: 0.4rem 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
   cursor: pointer;
-  font-weight: 500;
-  transition: all 0.3s;
+}
+.btn-back-header:hover { background: #e5e7eb; }
+
+.btn-logout {
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  padding: 0.4rem 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-logout:hover { background: #fecaca; }
+
+.supervisor-badge {
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: #f0fdf4;
+  color: #39A900;
+  border: 1px solid #bbf7d0;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
 }
 
-.tab-link.active {
-  opacity: 1;
-  border-bottom-color: #3b82f6;
-  color: #60a5fa;
+/* Form shell */
+.form-shell, .dashboard-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #f5f7f5;
+}
+.form-body {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 3rem 1rem;
 }
 
-.tab-link:hover {
-  opacity: 0.9;
+/* Login centered */
+.centered-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: #f5f7f5;
+  gap: 1.5rem;
+}
+.btn-link-back {
+  background: none;
+  border: none;
+  color: #6b7280;
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-decoration: underline;
 }
 </style>

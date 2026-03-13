@@ -40,9 +40,11 @@ export const processCertificate = async (tempFilePath, contratista) => {
         const certMonth = (certDate.getMonth() + 1).toString().padStart(2, '0');
 
         let finalPdfPath = '';
-        const ext = path.extname(tempFilePath).toLowerCase();
+        const buffer = await fs.readFile(tempFilePath);
+        const isZip = buffer.length > 4 && buffer[0] === 0x50 && buffer[1] === 0x4B;
 
-        if (ext === '.zip') {
+        if (isZip) {
+            logger.info(`Validado contenido ZIP para ${contratista.nombreCompleto}. Extrayendo...`);
             const zip = new AdmZip(tempFilePath);
             const zipEntries = zip.getEntries();
             const pdfEntry = zipEntries.find(entry => entry.entryName.toLowerCase().endsWith('.pdf'));
@@ -51,19 +53,19 @@ export const processCertificate = async (tempFilePath, contratista) => {
                 throw new Error(`No se encontró un PDF dentro del archivo ZIP para ${contratista.nombreCompleto}`);
             }
 
-            const fileName = `${contratista.nombreCompleto.replace(/\s+/g, '_')}_${certYear}_${certMonth}.pdf`;
+            const nombreRaw = contratista.nombreCompleto || contratista.nombre || 'Certificado';
+            const fileName = `${nombreRaw.replace(/\s+/g, '_')}_${certYear}_${certMonth}.pdf`;
             finalPdfPath = path.join(targetDir, fileName);
 
             // Extract and rename directly
-            const buffer = pdfEntry.getData();
-            await fs.writeFile(finalPdfPath, buffer);
-            await fs.remove(tempFilePath); // Cleanup zip
-        } else if (ext === '.pdf') {
+            const pdfBuffer = pdfEntry.getData();
+            await fs.writeFile(finalPdfPath, pdfBuffer);
+            await fs.remove(tempFilePath); // Cleanup original
+        } else {
+            // Asumimos que es un PDF si no es ZIP (ya que pasamos los filtros previos)
             const fileName = `${contratista.nombreCompleto.replace(/\s+/g, '_')}_${certYear}_${certMonth}.pdf`;
             finalPdfPath = path.join(targetDir, fileName);
             await fs.move(tempFilePath, finalPdfPath, { overwrite: true });
-        } else {
-            throw new Error(`Formato de archivo no soportado: ${ext}`);
         }
 
         logger.info(`✅ Certificado procesado: ${finalPdfPath}`);

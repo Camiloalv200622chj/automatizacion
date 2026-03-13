@@ -3,30 +3,31 @@ import mongoose from 'mongoose';
 const recordSchema = new mongoose.Schema({
     nombreContratista: {
         type: String,
-        required: [true, 'El nombre del contratista es obligatorio'],
-        trim: true
+        required: true
     },
     documento: {
         type: String,
-        required: true,
-        trim: true
+        required: true
     },
     entidad: {
         type: String,
         required: true
     },
     periodo: {
-        type: String, // Formato "YYYY-MM"
+        type: String,
         required: true
     },
-    fechaProcesamiento: {
-        type: Date,
-        default: Date.now
+    rutaArchivo: {
+        type: String
     },
     status: {
         type: String,
         enum: ['success', 'failed'],
         default: 'success'
+    },
+    fechaProcesamiento: {
+        type: Date,
+        default: Date.now
     }
 }, {
     timestamps: true

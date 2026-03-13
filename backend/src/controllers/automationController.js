@@ -6,8 +6,10 @@ import logger from '../utils/logger.js';
 export const runAutomation = async (req, res, next) => {
     try {
         const result = await executeFullAutomation();
+        logger.info('Automatización completa ejecutada con éxito.'); // Added logger.info
         res.json(result);
     } catch (error) {
+        logger.error(`Error al ejecutar la automatización completa: ${error.message}`); // Added logger.error
         next(error);
     }
 };
@@ -19,14 +21,18 @@ export const runAutomation = async (req, res, next) => {
 export const runEntityAutomation = async (req, res, next) => {
     try {
         const { entity, data } = req.body;
+        logger.info(`Petición de automatización recibida: Entidad=${entity}, Doc=${data.numeroDocumento}`);
 
         if (!data.nombreCompleto) {
+            logger.warn('Intento de automatización de entidad sin nombre completo del contratista.'); // Added logger.warn
             return res.status(400).json({ message: 'El nombre del contratista es obligatorio' });
         }
 
         const result = await executeEntityAutomation(entity, data);
+        logger.info(`Automatización de entidad ${entity} para ${data.numeroDocumento} ejecutada con éxito.`); // Added logger.info
         res.json(result);
     } catch (error) {
+        logger.error(`Error al ejecutar la automatización para la entidad ${req.body.entity} y documento ${req.body.data?.numeroDocumento}: ${error.message}`); // Added logger.error
         next(error);
     }
 };
@@ -43,12 +49,13 @@ export const getAutomationStatus = async (req, res, next) => {
         const records = await Record.find({ periodo: period });
 
         const statusReport = contratistas.map(c => {
-            const hasRecord = records.some(r => r.documento === c.numeroDocumento);
+            const successfulRecord = records.find(r => r.documento === c.numeroDocumento && r.status === 'success');
             return {
                 nombre: c.nombreCompleto,
                 documento: c.numeroDocumento,
-                completado: hasRecord,
-                fecha: hasRecord ? records.find(r => r.documento === c.numeroDocumento).fechaProcesamiento : null
+                completado: !!successfulRecord,
+                entidad: successfulRecord ? successfulRecord.entidad : '---',
+                fecha: successfulRecord ? successfulRecord.fechaProcesamiento : null
             };
         });
 

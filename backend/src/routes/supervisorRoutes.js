@@ -1,13 +1,17 @@
 import express from 'express';
-import { createSupervisor, getSupervisores, deleteSupervisor } from '../controllers/supervisorController.js';
+import { getSupervisores, deleteSupervisor } from '../controllers/supervisorController.js';
+import { loginSupervisor, registerSupervisor } from '../controllers/authController.js';
+import { protect } from '../middlewares/authMiddleware.js';
 
 const router = express.Router();
 
+router.post('/login', loginSupervisor);
+router.post('/register', registerSupervisor);
+
 router.route('/')
-    .post(createSupervisor)
-    .get(getSupervisores);
+    .get(protect, getSupervisores);
 
 router.route('/:id')
-    .delete(deleteSupervisor);
+    .delete(protect, deleteSupervisor);
 
 export default router;

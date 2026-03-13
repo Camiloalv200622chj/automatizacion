@@ -1,12 +1,13 @@
 import { google } from 'googleapis';
 import fs from 'fs';
 import path from 'path';
+import { Readable } from 'stream';
 import logger from './logger.js';
 
-const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
+const SCOPES = ['https://www.googleapis.com/auth/drive'];
 
 /**
- * Servicio para interactuar con Google Drive usando una Cuenta de Servicio
+ * Servicio para interactuar con Google Drive usando OAuth2 (Refresh Token)
  */
 class GoogleDriveService {
     constructor() {
@@ -16,21 +17,29 @@ class GoogleDriveService {
 
     init() {
         try {
-            const keyPath = path.resolve('gen-lang-client-0315680802-f1c2bf334cb0.json');
-            if (!fs.existsSync(keyPath)) {
-                logger.warn('Archivo gen-lang-client-0315680802-f1c2bf334cb0.json no encontrado. Google Drive no estará disponible.');
+            const clientId = process.env.GOOGLE_CLIENT_ID;
+            const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+            const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+
+            if (!clientId || !clientSecret || !refreshToken) {
+                logger.warn('Google Drive OAuth2: Faltan credenciales en el .env. Ejecuta setup-drive.js primero.');
                 return;
             }
 
-            const auth = new google.auth.GoogleAuth({
-                keyFile: keyPath,
-                scopes: SCOPES,
+            const oauth2Client = new google.auth.OAuth2(
+                clientId,
+                clientSecret,
+                'urn:ietf:wg:oauth:2.0:oob'
+            );
+
+            oauth2Client.setCredentials({
+                refresh_token: refreshToken
             });
 
-            this.drive = google.drive({ version: 'v3', auth });
-            logger.info('✅ Google Drive Service Inicializado');
+            this.drive = google.drive({ version: 'v3', auth: oauth2Client });
+            logger.info('✅ Google Drive Service Inicializado con OAuth2');
         } catch (error) {
-            logger.error(`Error inicializando Google Drive: ${error.message}`);
+            logger.error(`Error inicializando Google Drive (OAuth2): ${error.message}`);
         }
     }
 
@@ -48,6 +57,8 @@ class GoogleDriveService {
         const res = await this.drive.files.list({
             q: query,
             fields: 'files(id, name)',
+            supportsAllDrives: true,
+            includeItemsFromAllDrives: true,
         });
 
         return res.data.files.length > 0 ? res.data.files[0].id : null;
@@ -71,6 +82,7 @@ class GoogleDriveService {
         const res = await this.drive.files.create({
             resource: fileMetadata,
             fields: 'id',
+            supportsAllDrives: true,
         });
 
         return res.data.id;
@@ -109,24 +121,33 @@ class GoogleDriveService {
     async uploadFile(filePath, fileName, folderId) {
         if (!this.drive) return null;
 
-        const fileMetadata = {
-            name: fileName,
-            parents: [folderId],
-        };
+        try {
+            const fileStats = fs.statSync(filePath);
+            logger.info(`Preparando subida de ${fileName} (${fileStats.size} bytes)`);
 
-        const media = {
-            mimeType: 'application/pdf',
-            body: fs.createReadStream(filePath),
-        };
+            const fileMetadata = {
+                name: fileName,
+                parents: [folderId],
+            };
 
-        const res = await this.drive.files.create({
-            resource: fileMetadata,
-            media: media,
-            fields: 'id, webViewLink',
-        });
+            const media = {
+                mimeType: 'application/pdf',
+                body: Readable.from(fs.readFileSync(filePath)), // Buffer convertido a Stream para evitar bloqueos de OneDrive
+            };
 
-        logger.info(`Archivo subido a Drive: ${fileName} - ID: ${res.data.id}`);
-        return res.data;
+            const res = await this.drive.files.create({
+                resource: fileMetadata,
+                media: media,
+                fields: 'id, webViewLink',
+                supportsAllDrives: true,
+            });
+
+            logger.info(`✅ Archivo subido a Drive: ${fileName} - ID: ${res.data.id}`);
+            return res.data;
+        } catch (error) {
+            logger.error(`❌ Error subiendo a Drive: ${error.message}`);
+            throw error;
+        }
     }
 }
 
