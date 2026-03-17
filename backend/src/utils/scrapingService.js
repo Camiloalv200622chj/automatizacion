@@ -747,93 +747,261 @@ export const scrapeAsopagos = async (data) => {
         const tipoRep = data.tipoReporte?.includes('con valores') ? 'conValores' : 'sinValores';
 
         let alertaMostrada = '';
-        page.on('dialog', async d => { alertaMostrada = d.message(); logger.warn(`Alerta: ${alertaMostrada}`); await d.dismiss(); });
+        page.on('dialog', async d => { alertaMostrada = d.message(); logger.warn(`Alerta Asopagos: ${alertaMostrada}`); await d.dismiss(); });
 
+        // Variable para capturar la respuesta del servidor interceptada
+        let capturedPdfBuffer = null;
+        let capturedErrorText = null;
+
+        // =====================================================================
+        // INTERCEPTAR la respuesta del servidor a ServletEmpleado.
+        // Si el Content-Type es PDF, guardamos el buffer.
+        // Si es HTML, capturamos el texto de error.
+        // =====================================================================
+        await page.route('**/ServletEmpleado**', async (route) => {
+            logger.info('  -> [INTERCEPTOR] Interceptando request a ServletEmpleado...');
+            const response = await route.fetch();
+            const contentType = response.headers()['content-type'] || '';
+            logger.info(`  -> [INTERCEPTOR] Content-Type: ${contentType}, Status: ${response.status()}`);
+
+            if (contentType.includes('application/pdf') || contentType.includes('octet-stream')) {
+                // ¡ÉXITO! El servidor devolvió un PDF
+                capturedPdfBuffer = await response.body();
+                logger.info(`  -> [INTERCEPTOR] ✅ PDF capturado! Tamaño: ${capturedPdfBuffer.length} bytes`);
+                // Devolver una página vacía para que el navegador NO se cierre
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'text/html',
+                    body: '<html><body><h1>Certificado descargado exitosamente</h1></body></html>'
+                });
+            } else {
+                // El servidor devolvió HTML (error)
+                const body = await response.text();
+                capturedErrorText = body;
+                logger.warn(`  -> [INTERCEPTOR] ❌ Respuesta NO es PDF. Primeros 200 chars: ${body.substring(0, 200)}`);
+                // Completar la navegación para que la página muestre el error
+                await route.fulfill({ response });
+            }
+        });
+
+        // =====================================================================
+        // fillForm: Llenado con interacciones NATURALES
+        // =====================================================================
         const fillForm = async () => {
             await page.waitForSelector('#tipoID', { state: 'visible', timeout: 20000 });
             await page.selectOption('#tipoID', tipoDoc);
-            await page.fill('#numeroID', ''); await page.type('#numeroID', data.numeroDocumento, { delay: 30 });
+
+            await page.click('#numeroID');
+            await page.fill('#numeroID', '');
+            await page.type('#numeroID', data.numeroDocumento, { delay: 30 });
+
             if (data.periodo) {
                 const [year, month] = data.periodo.split('-');
-                await page.fill('#ano', year);
+                await page.click('#ano');
+                await page.fill('#ano', '');
+                await page.type('#ano', year, { delay: 30 });
                 await page.selectOption('#mes', month);
             }
+
             await page.selectOption('#tipoReporte', tipoRep);
-            // Verificación rápida
-            if (await page.inputValue('#numeroID') !== data.numeroDocumento) await page.fill('#numeroID', data.numeroDocumento);
-            logger.info('  -> Formulario preparado.');
+
+            // DISPARAR BLUR REAL con Tab para que jQuery ejecute consultarPlanillasPagas()
+            await page.click('#numeroID');
+            
+            const ajaxPromise = page.waitForResponse(
+                r => r.url().includes('ServletConsultaSucursal') && r.status() === 200,
+                { timeout: 15000 }
+            ).catch(() => null);
+
+            await page.keyboard.press('Tab');
+
+            logger.info('  -> Esperando AJAX ServletConsultaSucursal...');
+            const ajaxResponse = await ajaxPromise;
+
+            if (ajaxResponse) {
+                logger.info('  -> ✅ Respuesta AJAX recibida.');
+                await page.waitForTimeout(2000);
+            } else {
+                logger.warn('  -> ⚠️ No llegó AJAX. Intentando segundo blur...');
+                await page.click('#ano');
+                const p2 = page.waitForResponse(r => r.url().includes('ServletConsultaSucursal'), { timeout: 10000 }).catch(() => null);
+                await page.keyboard.press('Tab');
+                if (await p2) {
+                    logger.info('  -> ✅ AJAX recibida en segundo intento.');
+                    await page.waitForTimeout(2000);
+                } else {
+                    logger.warn('  -> ❌ No se pudo disparar AJAX.');
+                }
+            }
+
+            // Verificar campo oculto
+            const planillas = await page.evaluate(() => document.querySelector('input[name="tipos_numeros_planillas_pagas"]')?.value || '');
+            logger.info(`  -> tipos_numeros_planillas_pagas = "${planillas.substring(0, 60) || 'VACÍO'}"`);
+
+            // Asegurar campos ocultos
+            await page.evaluate((d) => {
+                const f = document.querySelector('#formCertPag');
+                if (f) {
+                    if (f.empleado) f.empleado.value = `${d.tipoDoc}--${d.numDoc}`;
+                    if (f.clicks) f.clicks.value = '0';
+                }
+            }, { tipoDoc, numDoc: data.numeroDocumento });
+
+            logger.info('  -> Formulario listo.');
         };
 
         const refreshCaptcha = async () => {
             const oldSrc = await page.getAttribute(captchaImageSelector, 'src').catch(() => null);
             await page.locator('i.fa-refresh').first().click({ force: true }).catch(() => {});
-            if (oldSrc) await page.waitForFunction((s, o) => document.querySelector(s)?.getAttribute('src') !== o, { timeout: 5000 }, captchaImageSelector, oldSrc).catch(() => {});
+            if (oldSrc) {
+                await page.waitForFunction(
+                    (s, o) => document.querySelector(s)?.getAttribute('src') !== o,
+                    { timeout: 5000 }, captchaImageSelector, oldSrc
+                ).catch(() => {});
+            }
             await page.waitForTimeout(1000);
         };
 
-        logger.info(`Scraping Asopagos: ${data.numeroDocumento}`);
-        await page.goto(url, { waitUntil: 'load', timeout: 40000 });
+        // =====================================================================
+        // Flujo principal
+        // =====================================================================
+        logger.info(`Scraping Asopagos: doc=${data.numeroDocumento}, periodo=${data.periodo}`);
+        await page.goto(url, { waitUntil: 'load', timeout: 60000 });
+        await page.waitForSelector('#tipoID', { state: 'visible', timeout: 30000 });
         await fillForm();
 
         for (let i = 1; i <= 5; i++) {
-            logger.info(`Intento ${i}/5...`);
+            logger.info(`--- Intento ${i}/5 ---`);
             alertaMostrada = '';
+            capturedPdfBuffer = null;
+            capturedErrorText = null;
 
+            // Si la página navegó a otra URL (por error previo), recargar
             if (!page.url().includes('descargarCertificacionPago.jsp')) {
-                await page.goto(url, { waitUntil: 'load' });
+                logger.info('  -> Recargando formulario...');
+                await page.goto(url, { waitUntil: 'load', timeout: 60000 });
+                await page.waitForSelector('#tipoID', { state: 'visible', timeout: 30000 });
                 await fillForm();
             }
 
             try {
+                // Resolver captcha
                 const initialSrc = await page.getAttribute(captchaImageSelector, 'src');
                 const textoCaptcha = await solveImageCaptcha(page, captchaImageSelector, true);
                 if (!textoCaptcha || (await page.getAttribute(captchaImageSelector, 'src')) !== initialSrc) {
-                    await refreshCaptcha(); continue;
+                    logger.warn('  -> Captcha no resuelto o cambió. Refrescando...');
+                    await refreshCaptcha();
+                    continue;
                 }
 
-                await page.click(captchaInputSelector, { clickCount: 3 }); await page.keyboard.press('Backspace');
+                await page.click(captchaInputSelector, { clickCount: 3 });
+                await page.keyboard.press('Backspace');
                 await page.type(captchaInputSelector, textoCaptcha, { delay: 50 });
-                
-                const dlPromise = page.waitForEvent('download', { timeout: 40000 }).catch(() => null);
-                const resPromise = page.waitForResponse(r => r.url().includes('ServletEmpleado'), { timeout: 30000 }).catch(() => null);
 
+                // Asegurar clicks=0 antes de enviar
                 await page.evaluate(() => {
-                    const f = document.querySelector('#formCertPag'); if (f?.clicks) f.clicks.value = '1';
-                    document.querySelector('#enviarConsRP')?.click();
+                    const f = document.querySelector('#formCertPag');
+                    if (f && f.clicks) f.clicks.value = '0';
                 });
 
-                const result = await Promise.race([
-                    dlPromise.then(d => ({ type: 'dl', val: d })),
-                    resPromise.then(r => ({ type: 'res', val: r })),
-                    new Promise(r => {
-                        const it = setInterval(() => { if (alertaMostrada) { clearInterval(it); r({ type: 'alert', val: alertaMostrada }); } }, 500);
-                        setTimeout(() => { clearInterval(it); r({ type: 'to' }); }, 35000);
-                    })
-                ]);
+                // Log estado del formulario
+                const st = await page.evaluate(() => {
+                    const f = document.querySelector('#formCertPag');
+                    if (!f) return 'NO FORM';
+                    return JSON.stringify({
+                        clicks: f.clicks?.value,
+                        empleado: f.empleado?.value,
+                        tipoID: f.tipoID?.value,
+                        numeroID: f.numeroID?.value,
+                        ano: f.ano?.value,
+                        mes: f.mes?.value,
+                        captchaLen: f.captchaIn?.value?.length,
+                        planillas: f.tipos_numeros_planillas_pagas?.value?.substring(0, 50),
+                        tarea: f.querySelector('input[name="tarea"]:checked')?.value
+                    });
+                });
+                logger.info(`  -> PRE-ENVÍO: ${st}`);
 
-                if (result.type === 'dl' && result.val) {
+                // =============================================================
+                // ENVÍO DIRECTO: NO usamos page.click('#enviarConsRP') porque
+                // el handler de validarCertificacion CAMBIA el campo 'tarea'
+                // de 'verCertificadoTresNuevo' a 'enviarLinkDescargaCertificadoPago'
+                // cuando tipoReporte='conValores'. Eso le dice al servidor que
+                // envíe un link por email en vez de devolver el PDF directamente.
+                //
+                // En su lugar, hacemos form.submit() directamente, preservando
+                // tarea='verCertificadoTresNuevo' para obtener el PDF siempre.
+                // =============================================================
+                logger.info('  -> Enviando formulario directamente (bypass validarCertificacion)...');
+                await page.evaluate(() => {
+                    const f = document.querySelector('#formCertPag');
+                    if (f) {
+                        // Asegurar que tarea NO sea cambiada
+                        const tareaRadio = f.querySelector('input[name="tarea"]:checked');
+                        if (tareaRadio) tareaRadio.value = 'verCertificadoTresNuevo';
+                        // Asegurar empleado esté set
+                        if (f.empleado && !f.empleado.value) {
+                            f.empleado.value = f.tipoID.value + '--' + f.numeroID.value;
+                        }
+                        f.submit();
+                    }
+                });
+
+                // Esperar a que el interceptor capture la respuesta (máx 25 seg)
+                for (let w = 0; w < 50; w++) {
+                    await page.waitForTimeout(500);
+                    if (capturedPdfBuffer || capturedErrorText || alertaMostrada) break;
+                }
+
+                // Evaluar resultado
+                if (capturedPdfBuffer) {
                     const pathFile = path.join(downloadPath, `ASOPAGOS_${data.numeroDocumento}_${data.periodo}.pdf`);
-                    await result.val.saveAs(pathFile);
-                    logger.info(`¡ÉXITO! Guardado en: ${pathFile}`);
+                    fs.writeFileSync(pathFile, capturedPdfBuffer);
+                    logger.info(`  -> ¡ÉXITO! PDF guardado: ${pathFile} (${capturedPdfBuffer.length} bytes)`);
                     return pathFile;
                 }
 
-                if (result.type === 'alert' && result.val.toLowerCase().includes('no existe')) throw new Error(result.val);
-                
-                await page.waitForTimeout(2000);
-                const content = await page.content().catch(() => '');
-                if (content.includes('no existe') || content.includes('no se encuentra')) throw new Error('Empleado no encontrado.');
-                
-                logger.warn('Fallo en intento. Reintentando...');
-                if (page.url().includes('ServletEmpleado')) await page.goto(url, { waitUntil: 'load' });
+                if (alertaMostrada) {
+                    logger.warn(`  -> Alerta: ${alertaMostrada}`);
+                    if (alertaMostrada.toLowerCase().includes('no existe')) throw new Error(alertaMostrada);
+                    if (alertaMostrada.toLowerCase().includes('captcha') || alertaMostrada.toLowerCase().includes('validación')) {
+                        await refreshCaptcha();
+                        continue;
+                    }
+                }
+
+                if (capturedErrorText) {
+                    logger.warn(`  -> Respuesta error del servidor: ${capturedErrorText.substring(0, 200)}`);
+                    if (capturedErrorText.includes('no existe') || capturedErrorText.includes('no se encuentra')) {
+                        throw new Error('Empleado no encontrado en planillas pagas.');
+                    }
+                    // Recargar formulario para reintentar
+                    await page.goto(url, { waitUntil: 'load', timeout: 60000 });
+                    await page.waitForSelector('#tipoID', { state: 'visible', timeout: 30000 });
+                    await fillForm();
+                    continue;
+                }
+
+                logger.warn('  -> Timeout: no se recibió respuesta del interceptor.');
+                // Verificar si la página cambió
+                const currentUrl = page.url();
+                logger.info(`  -> URL actual: ${currentUrl}`);
+                if (!currentUrl.includes('descargarCertificacionPago.jsp')) {
+                    // La página navegó sin pasar por el interceptor
+                    const content = await page.content().catch(() => '');
+                    logger.warn(`  -> Contenido página: ${content.substring(0, 200)}`);
+                }
                 await refreshCaptcha();
-                await fillForm();
 
             } catch (err) {
                 if (err.message.includes('existe') || err.message.includes('encontrado')) throw err;
-                logger.warn(`Error en intento: ${err.message}`);
+                logger.warn(`  -> Error intento ${i}: ${err.message}`);
+                await page.goto(url, { waitUntil: 'load', timeout: 60000 }).catch(() => {});
+                await page.waitForSelector('#tipoID', { state: 'visible', timeout: 30000 }).catch(() => {});
+                await fillForm().catch(() => {});
             }
         }
+
         throw new Error('No se pudo descargar después de 5 intentos.');
     } catch (error) {
         logger.error(`Error Asopagos: ${error.message}`);
